@@ -5,6 +5,7 @@ import copy
 
 from sklearn.utils import column_or_1d
 from sklearn.model_selection import GridSearchCV, cross_validate, cross_val_score
+from sklearn.ensemble import IsolationForest
 #from sklearn.experimental import enable_iterative_imputer
 from sklearn.impute import SimpleImputer
 from sklearn.preprocessing import MinMaxScaler, StandardScaler, MaxAbsScaler, RobustScaler, PowerTransformer
@@ -55,12 +56,38 @@ print ('Missing values: ' , sum(list(x_train.isnull().sum())))
 # 3. Some preprocessing - scaling - outliers detection - class balancing - feature selection
 # Scaling
 
+# Outliers detection
+op = IsolationForest( n_estimators=150
+                    , max_samples=1000
+                    , contamination='auto'
+                    , max_features=1.0, bootstrap=False
+                    , n_jobs=10
+                    , behaviour='new'
+                    , random_state=42
+                    , verbose=0
+                    , warm_start=False)
+outliers_predict = op.fit_predict(x_train)
+outliers = 0
+for o in outliers_predict:
+    if o == -1:
+        outliers += 1
+
+print('number of outliers:', outliers)
+
+x_train['is_outlier'] = outliers_predict
+x_train = x_train[x_train.is_outlier != -1]
+x_train = x_train.drop('is_outlier', axis=1)
+
+y_train['is_outlier'] = outliers_predict
+y_train = y_train[y_train.is_outlier != -1]
+y_train = y_train.drop('is_outlier', axis=1)
+
 print('Using SMOTE:')
 smote = SMOTE('not majority')
-x_train_init = copy.deepcopy(x_train) 
-y_train_init = copy.deepcopy(y_train) 
+x_train_init = copy.deepcopy(x_train)
+y_train_init = copy.deepcopy(y_train)
 
-x_train, y_train = smote.fit_sample(x_train, y_train)
+x_train, y_train = smote.fit_sample(x_train, y_train.y)
 print(x_train.shape)
 print(y_train.shape)
 
@@ -71,7 +98,7 @@ print('Samples/class: ', classes_pop)
 
 # 4. Classifier training + tuning
 clf = KNeighborsClassifier(n_neighbors=5)
-clf.fit(x_train, y_train.y)
+clf.fit(x_train, y_train)
 y_pred = clf.predict(x_train)
 
 
@@ -84,7 +111,7 @@ print(classification_report(y_train, y_pred, labels=[0, 1, 2]))
 print("BMCA:")
 print(balanced_accuracy_score(y_train, y_pred))
 
-cv_scores = cross_val_score(clf, x_train, y_train.y, scoring='balanced_accuracy', cv=10, n_jobs=10)
+cv_scores = cross_val_score(clf, x_train, y_train, scoring='balanced_accuracy', cv=10, n_jobs=10)
 display_scores(cv_scores)
 
 # 5. Make predictions
