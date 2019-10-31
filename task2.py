@@ -47,7 +47,7 @@ print ('Missing values: ' , sum(list(x_train.isnull().sum())))
 
 # 4. Classifier training + tuning
 clf = KNeighborsClassifier(n_neighbors=5)
-clf.fit(x_train, y_train)
+clf.fit(x_train, y_train.y)
 y_pred = clf.predict(x_train)
 
 print("Confusion Matrix of Training:")
