@@ -4,7 +4,7 @@ import numpy
 import copy
 
 from sklearn.utils import column_or_1d
-from sklearn.model_selection import GridSearchCV, cross_validate
+from sklearn.model_selection import GridSearchCV, cross_validate, cross_val_score
 #from sklearn.experimental import enable_iterative_imputer
 from sklearn.impute import SimpleImputer
 from sklearn.preprocessing import MinMaxScaler, StandardScaler, MaxAbsScaler, RobustScaler, PowerTransformer
@@ -16,12 +16,17 @@ from statistics import mean
 from sklearn.neighbors import KNeighborsClassifier
 from sklearn.metrics import classification_report
 from sklearn.metrics import confusion_matrix
+from sklearn.metrics import balanced_accuracy_score
 
 numpy.set_printoptions(threshold=sys.maxsize)
 
 def sort(val):
     return val[2]  # sort using the 2nd element
 
+def display_scores(scores):
+    print("Scores:", scores)
+    print("Mean:", scores.mean())
+    print("Standard deviation:", scores.std())
 
 x_train = pd.read_csv("X_train.csv")
 y_train = pd.read_csv("y_train.csv")
@@ -55,6 +60,12 @@ print(confusion_matrix(y_train, y_pred, labels=[0, 1, 2]))
 
 print("Classification Report of Training:")
 print(classification_report(y_train, y_pred, labels=[0, 1, 2]))
+
+print("BMCA:")
+print(balanced_accuracy_score(y_train, y_pred))
+
+cv_scores = cross_val_score(clf, x_train, y_train.y, scoring='balanced_accuracy', cv=10, n_jobs=10)
+display_scores(cv_scores)
 
 # 5. Make predictions
 
