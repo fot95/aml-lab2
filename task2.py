@@ -14,9 +14,12 @@ from sklearn.feature_selection import RFE, RFECV
 from statistics import mean
 
 from sklearn.neighbors import KNeighborsClassifier
-from sklearn.metrics import classification_report
-from sklearn.metrics import confusion_matrix
-from sklearn.metrics import balanced_accuracy_score
+
+
+from sklearn.metrics import classification_report, accuracy_score, confusion_matrix, balanced_accuracy_score
+
+from imblearn.over_sampling import SMOTE
+
 
 numpy.set_printoptions(threshold=sys.maxsize)
 
@@ -43,17 +46,34 @@ classes = [0, 1, 2]
 classes_pop = [0, 0, 0]
 for i in list(y_train['y']):
 	classes_pop[i] += 1
+
 print('Samples/class: ', classes_pop)
 
 # 2. Check for missing values
 print ('Missing values: ' , sum(list(x_train.isnull().sum())))
 
 # 3. Some preprocessing - scaling - outliers detection - class balancing - feature selection
+# Scaling
+
+print('Using SMOTE:')
+smote = SMOTE('not majority')
+x_train_init = copy.deepcopy(x_train) 
+y_train_init = copy.deepcopy(y_train) 
+
+x_train, y_train = smote.fit_sample(x_train, y_train)
+print(x_train.shape)
+print(y_train.shape)
+
+classes_pop = [0, 0, 0]
+for i in list(y_train):
+	classes_pop[i] += 1
+print('Samples/class: ', classes_pop)
 
 # 4. Classifier training + tuning
 clf = KNeighborsClassifier(n_neighbors=5)
 clf.fit(x_train, y_train.y)
 y_pred = clf.predict(x_train)
+
 
 print("Confusion Matrix of Training:")
 print(confusion_matrix(y_train, y_pred, labels=[0, 1, 2]))
