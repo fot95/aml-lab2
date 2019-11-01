@@ -4,7 +4,9 @@ import numpy
 import copy
 
 from sklearn.utils import column_or_1d
+from sklearn.decomposition import PCA
 from sklearn.model_selection import GridSearchCV, cross_validate, cross_val_score
+from sklearn.model_selection import KFold, RepeatedKFold, StratifiedKFold
 from sklearn.ensemble import IsolationForest
 #from sklearn.experimental import enable_iterative_imputer
 from sklearn.impute import SimpleImputer
@@ -13,7 +15,6 @@ from sklearn.feature_selection import SelectKBest, SelectFromModel
 from sklearn.feature_selection import chi2, f_regression, mutual_info_regression
 from sklearn.feature_selection import RFE, RFECV
 from statistics import mean
-
 from sklearn.neighbors import KNeighborsClassifier
 
 
@@ -57,6 +58,7 @@ print ('Missing values: ' , sum(list(x_train.isnull().sum())))
 # Scaling
 
 # Outliers detection
+'''
 op = IsolationForest( n_estimators=150
                     , max_samples=1000
                     , contamination='auto'
@@ -81,6 +83,17 @@ x_train = x_train.drop('is_outlier', axis=1)
 y_train['is_outlier'] = outliers_predict
 y_train = y_train[y_train.is_outlier != -1]
 y_train = y_train.drop('is_outlier', axis=1)
+'''
+
+# feature selection
+
+feature_selector = PCA(n_components=100)
+cols = list(x_train.columns.values)
+feature_selector.fit(x_train)
+x_train_sel = feature_selector.transform(x_train)
+print(x_train_sel.shape)
+
+x_train = pd.DataFrame(data=x_train_sel, columns=cols[0:100])
 
 print('Using SMOTE:')
 smote = SMOTE('not majority')
@@ -111,13 +124,36 @@ print(classification_report(y_train, y_pred, labels=[0, 1, 2]))
 print("BMCA:")
 print(balanced_accuracy_score(y_train, y_pred))
 
-cv_scores = cross_val_score(clf, x_train, y_train, scoring='balanced_accuracy', cv=10, n_jobs=10)
-display_scores(cv_scores)
+val_scores = []
+features = []
+test_df=[]
+
+N = 10
+kf = StratifiedKFold(n_splits=N, random_state=42, shuffle=True)
+for train_index, test_index in kf.split(x_train_init, y_train_init):
+    X_train_i, X_val_i = x_train_init.iloc[train_index], x_train_init.iloc[test_index]
+    Y_train_i, Y_val_i = y_train_init.iloc[train_index], y_train_init.iloc[test_index]
+
+    smote = SMOTE('not majority')
+    X_train_smote, Y_train_smote = smote.fit_sample(X_train_i, Y_train_i.y)
+
+    clf = KNeighborsClassifier(n_neighbors=5)
+    clf.fit(X_train_smote, Y_train_smote)
+    Y_pred_val = clf.predict(X_val_i)
+
+    test_s = balanced_accuracy_score(Y_val_i, Y_pred_val)
+
+    val_scores.append(test_s)
+
+print(val_scores)
+print("mean: ", mean(val_scores))
+print("std: ", numpy.std(val_scores))
 
 # 5. Make predictions
 
 test_set = pd.read_csv("X_test.csv")
 x_test = test_set.drop('id', axis=1)
+x_test = feature_selector.transform(x_test)
 y_test = clf.predict(x_test)
 Id = test_set['id']
 df = pd.DataFrame(Id)
