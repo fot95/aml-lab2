@@ -2,6 +2,15 @@ import pandas as pd
 import sys
 import numpy
 import copy
+import tensorflow
+import os
+import tempfile
+
+from tensorflow import keras
+from tensorflow.keras.models import Sequential
+from tensorflow.keras.layers import Dense, Dropout, Activation
+from tensorflow.keras.optimizers import SGD, RMSprop, Adagrad, Adadelta, Adam, Adamax, Nadam
+from tensorflow.keras import losses
 
 from sklearn.utils import column_or_1d
 from sklearn.decomposition import PCA, NMF
@@ -27,8 +36,6 @@ from imblearn.over_sampling import SMOTE
 #from sklearn.pipeline import Pipeline
 from imblearn.pipeline import make_pipeline, Pipeline
 
-from detect_outliers import detect_outliers
-
 numpy.set_printoptions(threshold=sys.maxsize)
 
 def sort(val):
@@ -40,64 +47,48 @@ def display_scores(scores):
     print("Standard deviation:", scores.std())
 
 def print_samples_per_class(y):
-	classes = [0, 1, 2]
-	classes_pop = [0, 0, 0]
-	for i in list(y):
-		classes_pop[i] += 1
+    classes = [0, 1, 2]
+    classes_pop = [0, 0, 0]
+    for i in list(y):
+        classes_pop[i] += 1
 
-	print('Samples/class: ', classes_pop)
+    print('Samples/class: ', classes_pop)
 
 
 def generate_model_report(y, y_pred):
-	print("Confusion Matrix:")
-	print(confusion_matrix(y, y_pred, labels=[0, 1, 2]))
+    print("Confusion Matrix:")
+    print(confusion_matrix(y, y_pred, labels=[0, 1, 2]))
 
-	print("Classification Report:")
-	print(classification_report(y, y_pred, labels=[0, 1, 2]))
+    print("Classification Report:")
+    print(classification_report(y, y_pred, labels=[0, 1, 2]))
 
-	print("BMCA:")
-	print(balanced_accuracy_score(y, y_pred)) 
+    print("BMCA:")
+    print(balanced_accuracy_score(y, y_pred))
 
 def remove_outliers(x, y, outliers):
-	outliers_predict = [1] * x.shape[0]
-	for i in range(0, len(outliers)):
-		outliers_predict[outliers[i]] = -1
-	
-	x['is_outlier'] = outliers_predict
-	x = x[x.is_outlier != -1]
-	x = x.drop('is_outlier', axis=1)
+    outliers_predict = [1] * x.shape[0]
+    for i in range(0, len(outliers)):
+        outliers_predict[outliers[i]] = -1
 
-	y['is_outlier'] = outliers_predict
-	y = y[y.is_outlier != -1]
-	y = y.drop('is_outlier', axis=1)
+    x['is_outlier'] = outliers_predict
+    x = x[x.is_outlier != -1]
+    x = x.drop('is_outlier', axis=1)
 
-	return x, y
+    y['is_outlier'] = outliers_predict
+    y = y[y.is_outlier != -1]
+    y = y.drop('is_outlier', axis=1)
+
+    return x, y
 
 def select_features(x, y):
-	'''
-	feature_selector = SelectKBest(f_classif, k=400)
-	x_sel = feature_selector.fit_transform(x, y)
-	mask = feature_selector.get_support()  # list of booleans
-	new_features = []  # The list of your best features
+    feature_selector = PCA(n_components=200)
+    cols = list(x.columns.values)
+    feature_selector.fit(x)
+    x_new = feature_selector.transform(x)
+    print(x_new.shape)
 
-	for bool, feature in zip(mask, cols):
-		if bool:
-			new_features.append(feature)
-	x_new = pd.DataFrame(data=x_sel, columns=new_features)
-	print("-------------------------------------------new_features size:", len(new_features))
-	scores_l = list(feature_selector.scores_)
-	scores_l.sort(reverse=True)
-	print(scores_l)
-	return x_new
-	'''
-	feature_selector = PCA(n_components=200)
-	cols = list(x.columns.values)
-	feature_selector.fit(x)
-	x_new = feature_selector.transform(x)
-	print(x_new.shape)
-
-	x = pd.DataFrame(data=x_new, columns=cols[0:200])
-	return x, feature_selector
+    x = pd.DataFrame(data=x_new, columns=cols[0:200])
+    return x, feature_selector
 
 # load dataset
 x_train_init = pd.read_csv("X_train.csv")
@@ -124,74 +115,147 @@ x_train_init, f_selector = select_features(x_train_init, y_train_init)
 outliers_2 = [160, 331, 1279, 1815, 2093, 2834, 3154, 3580, 3841, 4372]
 x_train_init, y_train_init = remove_outliers(x_train_init, y_train_init, outliers_2)
 
+x_train = x_train_init
+y_train = y_train_init.y
 
-# split data into train and validation set
-st = StratifiedShuffleSplit(n_splits=1, test_size=0.1, random_state=0)
-st.get_n_splits(x_train_init, y_train_init)
+classes = [0, 1, 2]
+classes_pop = [0, 0, 0]
+for i in list(y_train):
+    classes_pop[i] += 1
 
-for train_index, test_index in st.split(x_train_init, y_train_init):
-    x_train, x_val = x_train_init.iloc[train_index], x_train_init.iloc[test_index]
-    y_train, y_val = y_train_init.iloc[train_index], y_train_init.iloc[test_index]
+total = classes_pop[0] + classes_pop[1] + classes_pop[2]
 
-print(y_train.shape)
-print_samples_per_class(y_train['y'])
+weight_for_0 = (1 / classes_pop[0])*(total)/3.0
+weight_for_1 = (1 / classes_pop[1])*(total)/3.0
+weight_for_2 = (1 / classes_pop[2])*(total)/3.0
 
-print(y_val.shape)
-print_samples_per_class(y_val['y'])
+class_weight = {0: weight_for_0, 1: weight_for_1, 2: weight_for_2}
 
-################################################################################################
+print('Weight for class 0: {:.2f}'.format(weight_for_0))
+print('Weight for class 1: {:.2f}'.format(weight_for_1))
+print('Weight for class 2: {:.2f}'.format(weight_for_2))
 
-#print('Using SMOTE:')
-#smote = SMOTE('not majority')
-#x_train, y_train = smote.fit_sample(x_train, y_train)
-#print_samples_per_class(y_train)
-clf = SVC(C=1.0, kernel='rbf', gamma=0.001, class_weight='balanced')
-clf.fit(x_train, y_train)
+sgd = SGD(lr=0.01, decay=1e-6, momentum=0.9, nesterov=True)
+rmsprops = RMSprop()
+optimizer=sgd
+
+for dropout, epochs, batch_size, hidden_units in [(d, e, bs, hu)
+                                                    for d  in [0, 0.1, 0.25, 0.5, 0.75, 0.9]
+                                                    for e  in [50, 100, 150, 200, 250, 300, 400, 500, 700]
+                                                    for bs in [100, 300, 500, 700, 1000, 1500, 2000]
+                                                    for hu in [50, 75, 100, 125, 150, 175, 200, 300, 400, 600]
+                                                 ]:
+    model = Sequential()
+    # Dense(hidden_units) is a fully-connected layer with hidden_units hidden units.
+    # in the first layer, you must specify the expected input data shape:
+    # here, 200-dimensional vectors.
+    model.add(Dense(hidden_units, activation='relu', input_dim=200))
+    model.add(Dropout(dropout))
+    model.add(Dense(hidden_units, activation='relu'))
+    model.add(Dropout(dropout))
+    model.add(Dense(3, activation='softmax'))
+
+    model.compile(loss='sparse_categorical_crossentropy', # that is the best the others are awful
+                optimizer=optimizer, # https://keras.io/optimizers/
+                metrics=['sparse_categorical_accuracy']) #TOD #TODO custom metric https://machinelearningmastery.com/custom-metrics-deep-learning-keras-python/O custom metric https://machinelearningmastery.com/custom-metrics-deep-learning-keras-python/
+
+    y_train2 = y_train # keras.utils.to_categorical(y_train, num_classes=3)
+
+    model.fit(x_train, y_train2,
+            epochs=epochs,
+            batch_size=batch_size,
+            class_weight=class_weight,
+            verbose=0)
+
+    y_pred = model.predict_classes(x_train)
+    # print(y_pred)
+
+    # score = model.evaluate(x_train, y_train2, batch_size=128)
+    # print(score)
+
+    # 4. Classifier training + tuning
+
+    print("Confusion Matrix of Training:")
+    print(confusion_matrix(y_train, y_pred, labels=[0, 1, 2]))
+
+    print("Classification Report of Training:")
+    print(classification_report(y_train, y_pred, labels=[0, 1, 2]))
+
+    print("BMCA:")
+    print(balanced_accuracy_score(y_train, y_pred))
+
+    val_scores = []
+    features = []
+    test_df=[]
+
+    N = 10
+    kf = StratifiedKFold(n_splits=N, random_state=42, shuffle=True)
+    for train_index, test_index in kf.split(x_train, y_train):
+        X_train_i, X_val_i = x_train.iloc[train_index], x_train.iloc[test_index]
+        Y_train_i, Y_val_i = y_train.iloc[train_index], y_train.iloc[test_index]
+
+        model_i = Sequential()
+        model_i.add(Dense(hidden_units, activation='relu', input_dim=200))
+        model_i.add(Dropout(dropout))
+        model_i.add(Dense(hidden_units, activation='relu'))
+        model_i.add(Dropout(dropout))
+        model_i.add(Dense(3, activation='softmax'))
+
+        model_i.compile(loss='sparse_categorical_crossentropy', # that is the best the others are awful
+                        optimizer=optimizer, # https://keras.io/optimizers/
+                        metrics=['sparse_categorical_accuracy']) #TODO custom metric https://machinelearningmastery.com/custom-metrics-deep-learning-keras-python/
+
+        classes_pop = [0, 0, 0]
+        for i in list(y_train):
+            classes_pop[i] += 1
+
+        total = classes_pop[0] + classes_pop[1] + classes_pop[2]
+
+        weight_for_0 = (1 / classes_pop[0])*(total)/3.0
+        weight_for_1 = (1 / classes_pop[1])*(total)/3.0
+        weight_for_2 = (1 / classes_pop[2])*(total)/3.0
+
+        class_weight_i = {0: weight_for_0, 1: weight_for_1, 2: weight_for_2}
+
+        model_i.fit(X_train_i, Y_train_i,
+            epochs=epochs,
+            batch_size=batch_size,
+            class_weight=class_weight_i,
+            verbose=0)
+
+        Y_pred_val = model_i.predict_classes(X_val_i)
+
+        test_s = balanced_accuracy_score(Y_val_i, Y_pred_val)
+
+        val_scores.append(test_s)
+
+    print(val_scores)
+    print("mean: ", mean(val_scores))
+    print("std: ", numpy.std(val_scores))
+    print("^^^^^epochs:", epochs, "batch_size:", batch_size, "hidden_units:", hidden_units, "dropout:", dropout)
 
 '''
-clf=SVC(kernel = "rbf", class_weight='balanced')
-
-N_FEATURES_OPTIONS = [150, 200, 250, 300, 350]
-C_OPTIONS = [1.0, 10.0, 100.0, 1000.0]
-G_OPTIONS = [0.00001, 0.0001, 0.001, 0.01]
-param_grid = [
-    {
-  
-        #'reduce_dim': [SelectKBest(f_classif)],
-        #'reduce_dim__k': N_FEATURES_OPTIONS,
-        'class__C': C_OPTIONS,
-		'class__gamma': G_OPTIONS
-    }
-]
-
-pipe = Pipeline([('class', clf)])
-gs = GridSearchCV(pipe, param_grid=param_grid, scoring=make_scorer(balanced_accuracy_score), cv=5, n_jobs=-1, refit=True, return_train_score=True, verbose=2)
-gs.fit(x_train, y_train)
-print(gs.best_score_)
-print(gs.best_params_)
-clf = gs.best_estimator_
-'''
-
-print('test at the validation set')
-y_val_pred = clf.predict(x_val)
-generate_model_report(y_val, y_val_pred)
-
-print('test at the whole data set')
-y_init_pred = clf.predict(x_train_init)
-generate_model_report(y_train_init, y_init_pred)
-
-
-################################################################################################
-# Test Set
+# 5. Make predictions
 test_set = pd.read_csv("X_test.csv")
 x_test = test_set.drop('id', axis=1)
-# scaling
-x_test_scaled = scaler.fit_transform(x_test)
-cols = list(x_test.columns.values)
-x_test = pd.DataFrame(data=x_test_scaled, columns=cols)
+x_test = scaler.transform(x_test)
 x_test = f_selector.transform(x_test)
-y_test = clf.predict(x_test)
+y_test =  model.predict_classes(x_test)
 Id = test_set['id']
 df = pd.DataFrame(Id)
 df.insert(1, "y", y_test)
-df.to_csv('solution.csv', index=False)
+df.to_csv('solution_keras_unscaled.csv', index=False)
+
+
+test_set = pd.read_csv("X_test.csv")
+x_test = test_set.drop('id', axis=1)
+x_test_new = scaler.fit_transform(x_test)
+cols = list(x_test.columns.values)
+x_test = pd.DataFrame(data=x_test_new, columns=cols)
+x_test = f_selector.transform(x_test)
+y_test = model.predict_classes(x_test)
+Id = test_set['id']
+df = pd.DataFrame(Id)
+df.insert(1, "y", y_test)
+df.to_csv('solution_keras.csv', index=False)
+'''
