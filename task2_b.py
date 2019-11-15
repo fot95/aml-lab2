@@ -1,6 +1,7 @@
 import pandas as pd
 import sys
 import numpy
+import numpy as np
 import copy
 import tensorflow
 import os
@@ -115,8 +116,8 @@ x_train_init, f_selector = select_features(x_train_init, y_train_init)
 outliers_2 = [160, 331, 1279, 1815, 2093, 2834, 3154, 3580, 3841, 4372]
 x_train_init, y_train_init = remove_outliers(x_train_init, y_train_init, outliers_2)
 
-x_train = x_train_init
-y_train = y_train_init.y
+x_train = np.asarray(x_train_init)
+y_train = np.asarray(y_train_init.y)
 
 classes = [0, 1, 2]
 classes_pop = [0, 0, 0]
@@ -159,9 +160,8 @@ for dropout, epochs, batch_size, hidden_units in [(d, e, bs, hu)
                 optimizer=optimizer, # https://keras.io/optimizers/
                 metrics=['sparse_categorical_accuracy']) #TOD #TODO custom metric https://machinelearningmastery.com/custom-metrics-deep-learning-keras-python/O custom metric https://machinelearningmastery.com/custom-metrics-deep-learning-keras-python/
 
-    y_train2 = y_train # keras.utils.to_categorical(y_train, num_classes=3)
 
-    model.fit(x_train, y_train2,
+    model.fit(x_train, y_train,
             epochs=epochs,
             batch_size=batch_size,
             class_weight=class_weight,
@@ -169,9 +169,6 @@ for dropout, epochs, batch_size, hidden_units in [(d, e, bs, hu)
 
     y_pred = model.predict_classes(x_train)
     # print(y_pred)
-
-    # score = model.evaluate(x_train, y_train2, batch_size=128)
-    # print(score)
 
     # 4. Classifier training + tuning
 
@@ -191,8 +188,13 @@ for dropout, epochs, batch_size, hidden_units in [(d, e, bs, hu)
     N = 10
     kf = StratifiedKFold(n_splits=N, random_state=42, shuffle=True)
     for train_index, test_index in kf.split(x_train, y_train):
-        X_train_i, X_val_i = x_train.iloc[train_index], x_train.iloc[test_index]
-        Y_train_i, Y_val_i = y_train.iloc[train_index], y_train.iloc[test_index]
+        X_train_i, X_val_i = x_train_init.iloc[train_index], x_train_init.iloc[test_index]
+        Y_train_i, Y_val_i = y_train_init.iloc[train_index], y_train_init.iloc[test_index]
+
+        X_train_i = np.asarray(X_train_i)
+        X_val_i = np.asarray(X_val_i)
+        Y_train_i = np.asarray(Y_train_i)
+        Y_val_i = np.asarray(Y_val_i)
 
         model_i = Sequential()
         model_i.add(Dense(hidden_units, activation='relu', input_dim=200))
